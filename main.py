@@ -13,24 +13,21 @@ CLIENT = InferenceHTTPClient(
     api_key="KASbyY8hQkoVk1tKqmCc"
 )
 
-# model = YOLO('best.pt')
-
-# MODEL_MEAN_VALUES = (78.4263377603, 87.7689143744, 114.895847746)
 results = None
 
 
 def send_notification(device_id):
-    url = f"http://localhost:3333/notifications/{device_id}"
+    url = "http://localhost:3333/notifications/{device_id}"
     data = {"deviceId": device_id}
     try:
         response = requests.post(url, json=data)
         if response.status_code == 200:
-            print(f"Notificação enviada para o dispositivo {device_id}")
+            print("Notificação enviada para o dispositivo {device_id}")
         else:
-            print(f"Erro ao enviar notificação: {
-                  response.status_code} - {response.text}")
+            print(
+                "Erro ao enviar notificação: {response.status_code} - {response.text}")
     except Exception as e:
-        print(f"Erro ao enviar notificação: {e}")
+        print("Erro ao enviar notificação: {e}")
 
 
 def process_frame(frame):
@@ -48,12 +45,12 @@ def camera_feed():
             print("Erro ao acessar a câmera")
             return
 
+        currentClass = None
+
         while True:
             ret, frame = cap.read()
             if not ret:
                 break
-
-            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
             frame = cv2.resize(frame, (320, 240))
 
@@ -61,32 +58,32 @@ def camera_feed():
 
             if results:
                 predictions = results.get('predictions', [])
-                currentClass = None
                 for prediction in predictions:
 
                     if (prediction['class'] == 'Open' or prediction['class'] == 'Semi') and prediction['confidence'] >= 0.7:
                         print("Porta aberta!")
                         currentClass = 'Open'
-                        continue
+                        break
 
                     if currentClass == 'Closed':
 
                         print("NOTIFICAÇÃO A CAMINHO!\n")
                         # Mandar para id do dispositivo
-                        '''
-                        /notifications/{deviceId}
-
-                        '''
-                        send_notification(receive_id)
+                        # '''
+                        # /notifications/{deviceId}
+                        # '''
+                        # send_notification(receive_id)
+                        currentClass = None
                         break
 
+                    if prediction['class'] == 'Closed' and prediction['confidence'] >= 0.8:
+
                         currentClass = 'Closed'
-                        print(currentClass)
                         print("Porta fechada!\n")
 
                         # Tempo passado pelo usuário
                         time.sleep(5)
-                        continue
+                        break
 
     return Response(generate(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
