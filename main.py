@@ -1,18 +1,18 @@
+import threading
+import time
 from flask import Flask, Response, jsonify, request
 import cv2
-import threading
 from ultralytics import YOLO
 from inference_sdk import InferenceHTTPClient
 import requests
-import time
 
 app = Flask(__name__)
 
 CLIENT = InferenceHTTPClient(
     api_url="https://detect.roboflow.com",
-    api_key="KASbyY8hQkoVk1tKqmCc"
+    api_key="P23WgD6oL94DxdKRk7lJ"
 )
-
+8
 results = None
 
 
@@ -45,7 +45,9 @@ def camera_feed():
             print("Erro ao acessar a câmera")
             return
 
-        currentClass = None
+        closed_start_time = None  # Momento em que a porta foi detectada como fechada
+        notification_sent = False  # Controle de envio de notificações
+        current_class = None  # Estado atual
 
         while True:
             ret, frame = cap.read()
@@ -57,33 +59,37 @@ def camera_feed():
             threading.Thread(target=process_frame, args=(frame,)).start()
 
             if results:
-                predictions = results.get('predictions', [])
-                for prediction in predictions:
+                prediction = results.get('predictions', [0])
 
-                    if (prediction['class'] == 'Open' or prediction['class'] == 'Semi') and prediction['confidence'] >= 0.7:
-                        print("Porta aberta!")
-                        currentClass = 'Open'
-                        break
+                if prediction['class'] in ['Open', 'Semi'] and prediction['confidence'] > 0.7:
+                    print("=== Porta aberta! ===")
+                    current_class = 'Open'
+                    closed_start_time = None  # Reseta o controle de tempo de porta fechada
+                    notification_sent = False  # Permite o envio de notificação no futuro
 
-                    if currentClass == 'Closed':
+                elif prediction['class'] == 'Closed' and prediction['confidence'] > 0.7:
+                    if closed_start_time is None:
+                        closed_start_time = time.time()  # Inicia o contador de tempo de porta fechada
 
-                        print("NOTIFICAÇÃO A CAMINHO!\n")
-                        # Mandar para id do dispositivo
-                        # '''
-                        # /notifications/{deviceId}
-                        # '''
-                        # send_notification(receive_id)
-                        currentClass = None
-                        break
+                    # Porta fechada por 10 segundos (tempo estipulado pelo usuário)
+                    if time.time() - closed_start_time >= 10:
+                        if not notification_sent:
+                            print("NOTIFICAÇÃO A CAMINHO!\n")
+                            # Enviar notificação aqui
+                            notification_sent = True
+                            current_class = 'Notified'
+                            break
+                    else:
+                        print(
+                            "||| Porta fechada! |||\n||| Aguardando 10 segundos... |||")
 
-                    if prediction['class'] == 'Closed' and prediction['confidence'] >= 0.8:
+                else:
+                    # Para outros estados, resetar variáveis de controle
+                    closed_start_time = None
+                    notification_sent = False
 
-                        currentClass = 'Closed'
-                        print("Porta fechada!\n")
-
-                        # Tempo passado pelo usuário
-                        time.sleep(5)
-                        break
+            if current_class == 'Notified':
+                break
 
     return Response(generate(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
@@ -91,11 +97,13 @@ def camera_feed():
 @app.route('/receive_id', methods=['POST'])
 def receive_id():
     global received_id
+    global received_time
     data = request.get_json()
     if not data or 'id' not in data:
         return jsonify({'error': 'ID não fornecido'}), 400
 
     received_id = data['id']
+    received_time = data['time']
     print(f"ID recebido: {received_id}")
     return jsonify({'message': 'ID recebido com sucesso', 'id': received_id}), 200
 
