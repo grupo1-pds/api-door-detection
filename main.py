@@ -12,13 +12,13 @@ CLIENT = InferenceHTTPClient(
     api_url="https://detect.roboflow.com",
     api_key="P23WgD6oL94DxdKRk7lJ"
 )
-8
+
 results = None
 
 
 def send_notification(device_id):
-    url = "http://localhost:3333/notifications/{device_id}"
-    data = {"deviceId": device_id}
+    url = "http://safeelder.life:8080/notifications/{device_id}"
+    data = {"type": "door"}
     try:
         response = requests.post(url, json=data)
         if response.status_code == 200:
@@ -72,7 +72,7 @@ def camera_feed():
                         closed_start_time = time.time()  # Inicia o contador de tempo de porta fechada
 
                     # Porta fechada por 10 segundos (tempo estipulado pelo usuário)
-                    if time.time() - closed_start_time >= 10:
+                    if time.time() - closed_start_time >= int(received_time):
                         if not notification_sent:
                             print("NOTIFICAÇÃO A CAMINHO!\n")
                             # Enviar notificação aqui
@@ -104,6 +104,7 @@ def receive_id():
 
     received_id = data['id']
     received_time = data['time']
+    received_time = 10
     print(f"ID recebido: {received_id}")
     return jsonify({'message': 'ID recebido com sucesso', 'id': received_id}), 200
 
