@@ -10,24 +10,25 @@ app = Flask(__name__)
 
 CLIENT = InferenceHTTPClient(
     api_url="https://detect.roboflow.com",
-    api_key="P23WgD6oL94DxdKRk7lJ"
+    api_key="4J9Ptdi6V5dvW7xlOeoJ"
 )
 
 results = None
 
 
 def send_notification(device_id):
-    url = "http://safeelder.life:8080/notifications/{device_id}"
+    url = f"http://safeelder.life:8080/notifications/{device_id}?notificationType=bathroom"
+    print(url)
     data = {"type": "door"}
     try:
         response = requests.post(url, json=data)
         if response.status_code == 200:
-            print("Notificação enviada para o dispositivo {device_id}")
+            print(f"Notificação enviada para o dispositivo {device_id}")
         else:
             print(
-                "Erro ao enviar notificação: {response.status_code} - {response.text}")
+                f"Erro ao enviar notificação: {response.status_code} - {response.text}")
     except Exception as e:
-        print("Erro ao enviar notificação: {e}")
+        print(f"Erro ao enviar notificação: {e}")
 
 
 def process_frame(frame):
@@ -37,12 +38,12 @@ def process_frame(frame):
     # print(results)
 
 
-@app.route('/camera_feed')
+@app.route('/camera_feed_door', methods=['POST'])
 def camera_feed():
     def generate():
         cap = cv2.VideoCapture(0)  # Captura da câmera
         if not cap.isOpened():
-            print("Erro ao acessar a câmera")
+            print(f"Erro ao acessar a câmera")
             return
 
         closed_start_time = None  # Momento em que a porta foi detectada como fechada
@@ -59,34 +60,33 @@ def camera_feed():
             threading.Thread(target=process_frame, args=(frame,)).start()
 
             if results:
-                prediction = results.get('predictions', [0])
+                predictions = results.get('predictions', [])
 
-                if prediction['class'] in ['Open', 'Semi'] and prediction['confidence'] > 0.7:
-                    print("=== Porta aberta! ===")
-                    current_class = 'Open'
-                    closed_start_time = None  # Reseta o controle de tempo de porta fechada
-                    notification_sent = False  # Permite o envio de notificação no futuro
+                for prediction in predictions:
+                    if prediction['class'] in ['Open', 'Semi']:
+                        current_class = 'Open'
+                        closed_start_time = None  # Reseta o controle de tempo de porta fechada
+                        notification_sent = False  # Permite o envio de notificação no futuro
 
-                elif prediction['class'] == 'Closed' and prediction['confidence'] > 0.7:
-                    if closed_start_time is None:
-                        closed_start_time = time.time()  # Inicia o contador de tempo de porta fechada
+                    elif prediction['class'] == 'Closed':
+                        if closed_start_time is None:
+                            closed_start_time = time.time()  # Inicia o contador de tempo de porta fechada
 
-                    # Porta fechada por 10 segundos (tempo estipulado pelo usuário)
-                    if time.time() - closed_start_time >= int(received_time):
-                        if not notification_sent:
-                            print("NOTIFICAÇÃO A CAMINHO!\n")
-                            # Enviar notificação aqui
-                            notification_sent = True
-                            current_class = 'Notified'
-                            break
+                        # Porta fechada por X segundos (tempo estipulado pelo usuário)
+                        if time.time() - closed_start_time >= (int(received_time)*60):
+                            if not notification_sent:
+                                print("NOTIFICAÇÃO A CAMINHO!\n")
+                                send_notification(received_id)
+                                notification_sent = True
+                                current_class = 'Notified'
+                                break
+                        # else:
+                           # print("||| Porta fechada! |||\n||| Aguardando... |||")
+
                     else:
-                        print(
-                            "||| Porta fechada! |||\n||| Aguardando 10 segundos... |||")
-
-                else:
-                    # Para outros estados, resetar variáveis de controle
-                    closed_start_time = None
-                    notification_sent = False
+                        # Para outros estados, resetar variáveis de controle
+                        closed_start_time = None
+                        notification_sent = False
 
             if current_class == 'Notified':
                 break
@@ -94,7 +94,7 @@ def camera_feed():
     return Response(generate(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
 
-@app.route('/receive_id', methods=['POST'])
+@app.route('/receive_id_door', methods=['POST'])
 def receive_id():
     global received_id
     global received_time
@@ -104,7 +104,6 @@ def receive_id():
 
     received_id = data['id']
     received_time = data['time']
-    received_time = 10
     print(f"ID recebido: {received_id}")
     return jsonify({'message': 'ID recebido com sucesso', 'id': received_id}), 200
 
